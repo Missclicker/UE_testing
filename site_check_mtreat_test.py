@@ -20,7 +20,7 @@ from pysnmp.hlapi import *
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from config_file import LOGIN, PASSWORD
+from config_file import LOGIN, PASSWORD, form_letter
 
 CURRENT_DATE = datetime.now().date().isoformat()
 PATH = Path('C:/check_data/')
@@ -1404,31 +1404,6 @@ def mux_check_direct_e1(muxes, rtrs):
             rtr_ssh[hname].disconnect()
         except:
             pass
-
-
-def form_letter(site, mtu1):
-    print(f"""
-tech@datagroup.ua
-
-'Тіран Максим Леонідович' <tiran.ml@ua.energy>; 'Оконечніков Олександр Валентинович' <Okonechnikov.OV@ua.energy>; 
-'Шумейко Володимир Анатолійович' <Shumeyko.VA@ua.energy>; noc@ua.energy; 
-'Oleg Vystavkin' <ovystavkin@greennet.com.ua>; d.soloviov@netwave.ua
-
-Укренерго // Тех. мережа // {site['name']}
-
-Добрый день!
-По каналу:
-{site['name']}
-Включились в {site['isp_eq']}
-Vlan {site['vlan1']} - Наливайковка
-Vlan {site['vlan2']} - Жирова
-Tagged, MTU 1600
-""")
-    if mtu1:
-        print(f'Сейчас видим MTU {mtu1}')
-    else:
-        print('Сейчас нет связи.')
-    print('Прошу проверить.')
 
 
 if __name__ == '__main__':
