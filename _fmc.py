@@ -18,7 +18,9 @@ class FMC:
         'generate_token': '/api/fmc_platform/v1/auth/generatetoken',
         'refresh_token': '/api/fmc_config/v1/auth/refreshtoken',
         'device': '/api/fmc_config/v1/domain/{domainUUID}/devices/devicerecords',
-        'ha': '/api/fmc_config/v1/domain/{domainUUID}/devicehapairs/ftddevicehapairs'
+        'ha': '/api/fmc_config/v1/domain/{domainUUID}/devicehapairs/ftddevicehapairs',
+        'static': '/api/fmc_config/v1/domain/{domainUUID}/devices/devicerecords/'
+                  '{containerUUID}/routing/ipv4staticroutes'
     })
 
     def __init__(self, fmc_ip: str, protocol: str, login: str, password: str):
@@ -132,12 +134,17 @@ class FMC:
         return all_fws
 
     @_refresh_token_decorator
-    def api_get_call(self, uri_string, *args, **kwargs) -> requests.models.Response:
+    def api_get_call(self, uri_string, expanded=False) -> requests.models.Response:
         if 'domainUUID' in uri_string:
             uri_string = uri_string.format(
                 **{'domainUUID': self.domainUUID}
             )
-        url = self.host + uri_string
+        if not uri_string.startswith('https:'):
+            url = self.host + uri_string
+        else:
+            url = uri_string
+        if expanded:
+            url += '?expanded=true'
         r = self.session.get(url, headers=self.headers, verify=False)
         if r.status_code == 401:
             raise FMCAuthError('Auth failure')
@@ -154,13 +161,23 @@ class FMC:
         return r
 
     @_refresh_token_decorator
-    def post_to_fmc(self, uri_string: str, post_data: json) -> requests.models.Response:
+    def api_post_call(self, uri_string: str, post_data: json, method='post') -> requests.models.Response:
         if 'domainUUID' in uri_string:
             uri_string = uri_string.format(
                 **{'domainUUID': self.domainUUID}
             )
-        url = self.host + uri_string
-        r = self.session.post(url, headers=self.headers, json=post_data)
+        if not uri_string.startswith('http'):
+            url = self.host + uri_string
+        else:
+            url = uri_string
+
+        if method == 'post':
+            r = self.session.post(url, headers=self.headers, json=post_data)
+        elif method == 'put':
+            r = self.session.put(url, headers=self.headers, json=post_data)
+        else:
+            raise IOError(f'Unknown API method "{method}" provided ')
+
         if r.status_code == 401:
             raise FMCAuthError('Auth failure')
         return r

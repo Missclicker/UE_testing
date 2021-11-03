@@ -3,9 +3,6 @@ import re
 import subprocess
 import requests
 
-import json
-import sys
-
 from time import sleep
 from _fmc import FMC
 from datetime import datetime
@@ -54,10 +51,10 @@ class FTD:
             self.ha: bool = False
         self.subs: int = 0
         self.ha_ips: bool = False
-        self.out = ''
-        self.route = ''
-        self.s2s = ''
-        self.bgp = ''
+        self.out: bool = False
+        self.route: bool = False
+        self.s2s: bool = False
+        self.bgp: bool = False
         self.clock = False
         self._device = {
             'device_type': 'cisco_ftd',
@@ -65,6 +62,12 @@ class FTD:
             'username': login,
             'password': password
         }
+        self._outside_route_net = [
+            {'type': 'NetworkGroup',
+             'overridable': False,
+             'name': 'DC_OUT',
+             'id': '7C310EB7-E0EE-0ed3-0000-274878091582'}
+        ]
         if init_connect:
             self.ssh = netmiko.ConnectHandler(
                 **self._device,
@@ -185,32 +188,75 @@ class FTD:
                 "type": "AccessPolicy"
             }
         }
-        r = self.fmc.post_to_fmc(FMC.urls.device, j)
+        r = self.fmc.api_post_call(FMC.urls.device, j, method='post')
         if r.ok:
             self.fmc.need_refresh = True
         return r
 
+    def check_static(self) -> requests.models.Response:
+        url = FMC.urls.static.format(
+            **{
+                'domainUUID': self.fmc.domainUUID,
+                'containerUUID': self.on_fmc['id']
+            })
+        reply = self.fmc.api_get_call(url, expanded=True)
+        if not reply.ok:
+            return reply
+
+        json_data = {}
+        if 'items' not in reply.json().keys():
+            return reply
+        for route in reply.json()['items']:
+            if route['interfaceName'] == 'Outside' \
+                    and route['selectedNetworks'][0]['name'] == 'any-ipv4':
+                json_data = route
+                break
+            elif route['interfaceName'] == 'Outside'\
+                    and route['selectedNetworks'] == self._outside_route_net:
+                self.route = True
+                return reply
+
+        return self._generate_route(json_data)
+
+    def _generate_route(self, json_data: dict = {}) -> requests.models.Response:
+        if json_data:
+            json_data.pop('metadata')
+            json_data['selectedNetworks'] = self._outside_route_net
+            method = 'put'
+            route_url = json_data['links']['self']
+        else:
+            json_data = {
+                "interfaceName": "Outside",
+                "selectedNetworks": self._outside_route_net,
+                "gateway": {
+                    "literal": {
+                        "type": "Host",
+                        # always as MGMT but ends on .1
+                        "value": self.ip[:-1]
+                    }
+                },
+                "metricValue": 1,
+                "type": "IPv4StaticRoute",
+                "isTunneled": False
+            }
+            method = 'post'
+            route_url = FMC.urls.static
+        r = self.fmc.api_post_call(route_url, json_data, method)
+        if r.ok:
+            self.route = True
+        return r
 
 """
 FTD
-ping_site_and_ftd
-ssh_connect
-check_manager
-    fix_manager
-fix_clock
-reboot
-
-delete_from_fmc
-add_to_fmc
-
-check_ha/subs on device
-check_bgp_state
-
 create_port_channel
 create_subs
 create_ha
 create_out
-create_static_routes
+
+check_bgp_state
 
 fix_standby_ips
+
+fix_clock
+reboot
 """
